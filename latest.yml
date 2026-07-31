@@ -1,8 +1,8 @@
-version: 1.0.1
+version: 1.0.2
 files:
   - url: HiveLogic-Setup.exe
-    sha512: S9YEErMXNXtYZOx9dCHCzZeOTsXNkfqYCmQsHoxOXhr8NBUBX962X/BSRTY8gYeBrGn1jhDnwX+YJDVvZ3X8hA==
-    size: 99033244
+    sha512: vfNWfqPwW57lIzclUws/yOq1ItVq0Ebj0crGoPvFB53G2egUmJAF5c+VKmhJgWUXprWUel9hjd+QLu3mU5mEaQ==
+    size: 99033390
 path: HiveLogic-Setup.exe
-sha512: S9YEErMXNXtYZOx9dCHCzZeOTsXNkfqYCmQsHoxOXhr8NBUBX962X/BSRTY8gYeBrGn1jhDnwX+YJDVvZ3X8hA==
-releaseDate: '2026-07-31T16:48:44.891Z'
+sha512: vfNWfqPwW57lIzclUws/yOq1ItVq0Ebj0crGoPvFB53G2egUmJAF5c+VKmhJgWUXprWUel9hjd+QLu3mU5mEaQ==
+releaseDate: '2026-07-31T19:25:26.957Z'

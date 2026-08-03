@@ -8,6 +8,7 @@ const DEFAULT_PROCESS_TIMEOUT_MS = 15_000;
 const CLEANUP_TIMEOUT_MS = 1_000;
 const FAILURE_CODES = new Set([
   'no_speech',
+  'os_microphone_denied',
   'permission_denied',
   'unavailable',
   'timeout',
@@ -36,10 +37,10 @@ try {
     [Console]::Out.Write('OK:' + [Convert]::ToBase64String($bytes))
   }
 } catch [UnauthorizedAccessException] {
-  [Console]::Out.Write('PERMISSION_DENIED')
+  [Console]::Out.Write('OS_MICROPHONE_DENIED')
 } catch [System.Runtime.InteropServices.COMException] {
   if ($_.Exception.HResult -eq -2147024891) {
-    [Console]::Out.Write('PERMISSION_DENIED')
+    [Console]::Out.Write('OS_MICROPHONE_DENIED')
   } else {
     [Console]::Out.Write('UNAVAILABLE')
   }
@@ -87,6 +88,7 @@ function parseRecognizerOutput(output) {
   const value = output.trim();
   if (value === 'NO_SPEECH') return failure('no_speech');
   if (value === 'PERMISSION_DENIED') return failure('permission_denied');
+  if (value === 'OS_MICROPHONE_DENIED') return failure('os_microphone_denied');
   if (value === 'UNAVAILABLE') return failure('unavailable');
   if (value === 'RECOGNITION_ERROR') return failure('recognition_error');
   if (!value.startsWith('OK:')) return failure('recognition_error');

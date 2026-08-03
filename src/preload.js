@@ -11,6 +11,7 @@ const VOICE_START_SELECTOR = 'button.reina-pilot-voice-start';
 const MAX_TRANSCRIPT_CHARS = 1000;
 const SPEECH_FAILURE_CODES = new Set([
   'no_speech',
+  'os_microphone_denied',
   'permission_denied',
   'unavailable',
   'timeout',
@@ -114,7 +115,12 @@ function createPreloadSpeechBridge() {
   }
 
   async function cancelRecognition() {
-    pendingToken = null;
+    // FIX (voice regression): a cancel targets only the ACTIVE native
+    // recognition. It must NEVER clear a freshly click-armed token —
+    // otherwise a stale/defensive cancel racing a new Enable Voice click
+    // wipes the token before recognizeOnce() runs and reports a false
+    // "permission denied". The token is already single-use with a 2s TTL
+    // enforced in the main process, so not clearing it here loses nothing.
     try {
       return normalizeCancelResult(
         await ipcRenderer.invoke('hl-native-speech-cancel')

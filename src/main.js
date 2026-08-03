@@ -303,7 +303,11 @@ ipcMain.handle('hl-native-speech-recognize-once', (event, token) => {
 });
 ipcMain.handle('hl-native-speech-cancel', (event) => {
   if (!trustedMainSender(event)) return { ok: false };
-  speechAuthorization.clear();
+  // FIX (voice regression): cancel stops only the ACTIVE native recognition.
+  // Clearing the armed authorization here let a stale cancel kill the token a
+  // real Enable Voice click had just armed (-> false "permission denied").
+  // The authorization is single-use with a 2s TTL; window close and app quit
+  // still clear it explicitly.
   return nativeSpeech.cancelRecognition();
 });
 

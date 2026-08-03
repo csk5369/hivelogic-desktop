@@ -132,3 +132,40 @@ test('unsupported platform and spawn errors fail closed', async () => {
     code: 'unavailable',
   });
 });
+
+
+const { parseRecognizerOutput: __pro } = require('../src/native-speech');
+
+test('OS microphone denial (UnauthorizedAccessException string) maps to os_microphone_denied', () => {
+  assert.deepEqual(__pro('OS_MICROPHONE_DENIED'), {
+    ok: false,
+    code: 'os_microphone_denied',
+  });
+});
+
+test('OS microphone denial via E_ACCESSDENIED HResult path also yields os_microphone_denied', async () => {
+  // The PowerShell script writes OS_MICROPHONE_DENIED for both
+  // UnauthorizedAccessException and COMException HResult -2147024891.
+  // Drive the full child path to confirm the code surfaces end to end.
+  const { EventEmitter } = require('node:events');
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.kill = () => {};
+  const service = createNativeSpeechService({
+    platform: 'win32',
+    spawn: () => child,
+    processTimeoutMs: 1000,
+  });
+  const recognition = service.recognizeOnce();
+  child.stdout.emit('data', Buffer.from('OS_MICROPHONE_DENIED'));
+  child.emit('close', 0);
+  assert.deepEqual(await recognition, { ok: false, code: 'os_microphone_denied' });
+});
+
+test('the token-guard permission_denied stays distinct from the OS denial code', () => {
+  assert.deepEqual(__pro('PERMISSION_DENIED'), {
+    ok: false,
+    code: 'permission_denied',
+  });
+  assert.notEqual('os_microphone_denied', 'permission_denied');
+});

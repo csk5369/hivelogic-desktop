@@ -4,6 +4,7 @@ const VOICE_START_SELECTOR = 'button.reina-pilot-voice-start';
 const MAX_TRANSCRIPT_CHARS = 1000;
 const FAILURE_CODES = new Set([
   'no_speech',
+  'os_microphone_denied',
   'permission_denied',
   'unavailable',
   'timeout',
@@ -111,7 +112,8 @@ function createPreloadSpeechBridge(options) {
   }
 
   async function cancelRecognition() {
-    pendingToken = null;
+    // FIX (voice regression): see src/preload.js — a stale cancel must not
+    // clear a freshly click-armed token (single-use + 2s TTL in main).
     try {
       return normalizeCancelResult(await invoke('hl-native-speech-cancel'));
     } catch (_) {

@@ -1,0 +1,56 @@
+{
+  "name": "hivelogic-desktop",
+  "productName": "HiveLogic",
+  "version": "1.0.3",
+  "description": "HiveLogic — AI-powered Construction Business Operating System. Desktop app.",
+  "main": "src/main.js",
+  "author": "GH Group <chris@ghgrp.net>",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "build:win": "electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^37.2.3",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "net.ghgrp.hivelogic",
+    "productName": "HiveLogic",
+    "artifactName": "HiveLogic-Setup.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "csk5369",
+        "repo": "hivelogic-desktop",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

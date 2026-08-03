@@ -1,0 +1,134 @@
+'use strict';
+
+const { EventEmitter } = require('node:events');
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const {
+  createNativeSpeechService,
+  parseRecognizerOutput,
+  sanitizeTranscript,
+} = require('../src/native-speech');
+
+function encoded(text) {
+  return `OK:${Buffer.from(text, 'utf8').toString('base64')}`;
+}
+
+function fakeChild() {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.killed = false;
+  child.kill = () => {
+    child.killed = true;
+  };
+  return child;
+}
+
+test('parses only bounded fixed-protocol recognizer output', () => {
+  assert.deepEqual(parseRecognizerOutput(encoded('  Hello, Reina.  ')), {
+    ok: true,
+    transcript: 'Hello, Reina.',
+  });
+  assert.deepEqual(parseRecognizerOutput('NO_SPEECH'), {
+    ok: false,
+    code: 'no_speech',
+  });
+  assert.deepEqual(parseRecognizerOutput('PERMISSION_DENIED'), {
+    ok: false,
+    code: 'permission_denied',
+  });
+  assert.deepEqual(parseRecognizerOutput('raw error: secret'), {
+    ok: false,
+    code: 'recognition_error',
+  });
+  assert.equal(sanitizeTranscript('a\u0000  b'), 'a b');
+  assert.equal(sanitizeTranscript('x'.repeat(1001)), null);
+});
+
+test('recognizes one transcript and rejects concurrent recognition', async () => {
+  const child = fakeChild();
+  const service = createNativeSpeechService({
+    platform: 'win32',
+    spawn: () => child,
+    processTimeoutMs: 1000,
+  });
+
+  const first = service.recognizeOnce();
+  assert.deepEqual(await service.recognizeOnce(), {
+    ok: false,
+    code: 'unavailable',
+  });
+  child.stdout.emit('data', Buffer.from(encoded('What needs attention?')));
+  child.emit('close', 0);
+  assert.deepEqual(await first, {
+    ok: true,
+    transcript: 'What needs attention?',
+  });
+});
+
+test('cancel returns exact typed results and cleans up the child', async () => {
+  const child = fakeChild();
+  const service = createNativeSpeechService({
+    platform: 'win32',
+    spawn: () => child,
+    processTimeoutMs: 1000,
+  });
+
+  const recognition = service.recognizeOnce();
+  assert.deepEqual(await service.cancelRecognition(), { ok: true });
+  assert.equal(child.killed, true);
+  assert.deepEqual(await recognition, { ok: false, code: 'canceled' });
+  assert.deepEqual(await service.cancelRecognition(), { ok: false });
+  child.emit('close', null, 'SIGTERM');
+});
+
+test('waits for stdout to drain after exit and parses only on close', async () => {
+  const child = fakeChild();
+  const service = createNativeSpeechService({
+    platform: 'win32',
+    spawn: () => child,
+    processTimeoutMs: 1000,
+  });
+  const recognition = service.recognizeOnce();
+  const value = encoded('Final drained transcript');
+  child.stdout.emit('data', Buffer.from(value.slice(0, 7)));
+  child.emit('exit', 0);
+  child.stdout.emit('data', Buffer.from(value.slice(7)));
+  child.emit('close', 0);
+  assert.deepEqual(await recognition, {
+    ok: true,
+    transcript: 'Final drained transcript',
+  });
+});
+
+test('times out, terminates the child, and never exposes process errors', async () => {
+  const child = fakeChild();
+  const service = createNativeSpeechService({
+    platform: 'win32',
+    spawn: () => child,
+    processTimeoutMs: 5,
+  });
+  assert.deepEqual(await service.recognizeOnce(), {
+    ok: false,
+    code: 'timeout',
+  });
+  assert.equal(child.killed, true);
+});
+
+test('unsupported platform and spawn errors fail closed', async () => {
+  const unsupported = createNativeSpeechService({ platform: 'linux' });
+  assert.deepEqual(await unsupported.recognizeOnce(), {
+    ok: false,
+    code: 'unavailable',
+  });
+
+  const broken = createNativeSpeechService({
+    platform: 'win32',
+    spawn() {
+      throw new Error('SECRET');
+    },
+  });
+  assert.deepEqual(await broken.recognizeOnce(), {
+    ok: false,
+    code: 'unavailable',
+  });
+});

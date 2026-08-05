@@ -5,6 +5,7 @@ const { spawn: defaultSpawn } = require('child_process');
 const MAX_TRANSCRIPT_CHARS = 1000;
 const MAX_OUTPUT_BYTES = 16 * 1024;
 const DEFAULT_PROCESS_TIMEOUT_MS = 15_000;
+const DEFAULT_WAKE_TIMEOUT_MS = 15 * 60_000;
 const CLEANUP_TIMEOUT_MS = 1_000;
 const FAILURE_CODES = new Set([
   'no_speech',
@@ -52,6 +53,53 @@ try {
   [Console]::Out.Write('UNAVAILABLE')
 } catch [System.IO.FileNotFoundException] {
   [Console]::Out.Write('UNAVAILABLE')
+} catch {
+  [Console]::Out.Write('RECOGNITION_ERROR')
+} finally {
+  if ($null -ne $recognizer) { $recognizer.Dispose() }
+}
+`;
+
+// The wake phase is deliberately native and local: Windows listens only for
+// the fixed phrase, then the same recognizer captures one following sentence.
+// No audio leaves the device through this service.
+const POWERSHELL_WAKE_SCRIPT = String.raw`
+$ErrorActionPreference = 'Stop'
+$recognizer = $null
+try {
+  Add-Type -AssemblyName System.Speech
+  $culture = [Globalization.CultureInfo]::GetCultureInfo('en-US')
+  $recognizer = New-Object System.Speech.Recognition.SpeechRecognitionEngine($culture)
+  $wakeBuilder = New-Object System.Speech.Recognition.GrammarBuilder
+  $wakeBuilder.Append('hey reina')
+  $recognizer.LoadGrammar((New-Object System.Speech.Recognition.Grammar($wakeBuilder)))
+  $recognizer.SetInputToDefaultAudioDevice()
+  $wake = $recognizer.Recognize([TimeSpan]::FromMinutes(15))
+  if ($null -eq $wake -or $wake.Text -ine 'hey reina') {
+    [Console]::Out.Write('WAKE_TIMEOUT')
+  } else {
+    [Console]::Out.Write('WAKE' + [Environment]::NewLine)
+    $recognizer.UnloadAllGrammars()
+    $recognizer.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
+    $recognizer.InitialSilenceTimeout = [TimeSpan]::FromSeconds(8)
+    $recognizer.BabbleTimeout = [TimeSpan]::FromSeconds(4)
+    $recognizer.EndSilenceTimeout = [TimeSpan]::FromMilliseconds(750)
+    $question = $recognizer.Recognize([TimeSpan]::FromSeconds(15))
+    if ($null -eq $question -or [String]::IsNullOrWhiteSpace($question.Text)) {
+      [Console]::Out.Write('NO_SPEECH')
+    } else {
+      $bytes = [Text.Encoding]::UTF8.GetBytes($question.Text)
+      [Console]::Out.Write('OK:' + [Convert]::ToBase64String($bytes))
+    }
+  }
+} catch [UnauthorizedAccessException] {
+  [Console]::Out.Write('OS_MICROPHONE_DENIED')
+} catch [System.Runtime.InteropServices.COMException] {
+  if ($_.Exception.HResult -eq -2147024891) {
+    [Console]::Out.Write('OS_MICROPHONE_DENIED')
+  } else {
+    [Console]::Out.Write('UNAVAILABLE')
+  }
 } catch {
   [Console]::Out.Write('RECOGNITION_ERROR')
 } finally {
@@ -211,6 +259,70 @@ function createNativeSpeechService(options = {}) {
     });
   }
 
+  function listenForWakeWord(options = {}) {
+    const onWake = typeof options.onWake === 'function' ? options.onWake : null;
+    const wakeTimeoutMs = Number.isSafeInteger(options.wakeTimeoutMs)
+      ? options.wakeTimeoutMs
+      : DEFAULT_WAKE_TIMEOUT_MS;
+    if (platform !== 'win32' || active) return Promise.resolve(failure('unavailable'));
+
+    return new Promise((resolve) => {
+      let child;
+      try {
+        child = spawn(
+          'powershell.exe',
+          ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodePowerShellCommand(POWERSHELL_WAKE_SCRIPT)],
+          { windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'ignore'] }
+        );
+      } catch (_) {
+        resolve(failure('unavailable'));
+        return;
+      }
+
+      const current = { child, output: '', resolved: false, canceled: false, timeout: null, cleanup: null, resolve, wakeSent: false };
+      active = current;
+      function resolveOnce(result) {
+        if (current.resolved) return;
+        current.resolved = true;
+        current.resolve(result);
+      }
+      function terminate(result) {
+        resolveOnce(result);
+        try { current.child.kill(); } catch (_) {}
+        current.cleanup = setTimeout(() => clearActive(current), CLEANUP_TIMEOUT_MS);
+        if (typeof current.cleanup.unref === 'function') current.cleanup.unref();
+      }
+      current.timeout = setTimeout(() => terminate(failure('timeout')), wakeTimeoutMs);
+      if (typeof current.timeout.unref === 'function') current.timeout.unref();
+
+      child.stdout.on('data', (chunk) => {
+        if (current.resolved) return;
+        current.output += chunk.toString('utf8');
+        const wakeMarker = current.output.match(/^WAKE\r?\n/);
+        if (!current.wakeSent && wakeMarker) {
+          current.wakeSent = true;
+          current.output = current.output.slice(wakeMarker[0].length);
+          try { onWake && onWake(); } catch (_) {}
+        }
+        if (Buffer.byteLength(current.output, 'utf8') > MAX_OUTPUT_BYTES) terminate(failure('recognition_error'));
+      });
+      child.once('error', () => {
+        clearTimeout(current.timeout);
+        clearTimeout(current.cleanup);
+        clearActive(current);
+        resolveOnce(failure('unavailable'));
+      });
+      child.once('close', () => {
+        clearTimeout(current.timeout);
+        clearTimeout(current.cleanup);
+        clearActive(current);
+        if (current.canceled) return resolveOnce(failure('canceled'));
+        const output = current.output.trim();
+        resolveOnce(output === 'WAKE_TIMEOUT' ? failure('timeout') : parseRecognizerOutput(output));
+      });
+    });
+  }
+
   function cancelRecognition() {
     const current = active;
     if (!current || current.resolved) return Promise.resolve({ ok: false });
@@ -226,13 +338,14 @@ function createNativeSpeechService(options = {}) {
     return Promise.resolve({ ok: true });
   }
 
-  return Object.freeze({ recognizeOnce, cancelRecognition });
+  return Object.freeze({ recognizeOnce, listenForWakeWord, cancelRecognition });
 }
 
 module.exports = {
   FAILURE_CODES,
   MAX_TRANSCRIPT_CHARS,
   POWERSHELL_SCRIPT,
+  POWERSHELL_WAKE_SCRIPT,
   createNativeSpeechService,
   parseRecognizerOutput,
   sanitizeTranscript,

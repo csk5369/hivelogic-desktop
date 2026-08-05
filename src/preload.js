@@ -8,6 +8,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // built-ins. Keep this bridge self-contained so a local require cannot prevent
 // the entire desktop API from being exposed.
 const VOICE_START_SELECTOR = 'button.reina-pilot-voice-start';
+const WAKE_WORD_START_SELECTOR = 'button#rnaVoiceToggle';
 const MAX_TRANSCRIPT_CHARS = 1000;
 const SPEECH_FAILURE_CODES = new Set([
   'no_speech',
@@ -135,13 +136,51 @@ function createPreloadSpeechBridge() {
 
 const speechBridge = createPreloadSpeechBridge();
 
-window.addEventListener('click', speechBridge.armFromClick, true);
+function enableWakeWordFromClick(event) {
+  try {
+    if (!event || event.isTrusted !== true || event.button !== 0) return false;
+    const button = event.target && event.target.closest(WAKE_WORD_START_SELECTOR);
+    if (!button || button.disabled === true || button.isConnected !== true) return false;
+    const token = createSpeechToken();
+    if (ipcRenderer.sendSync('hl-native-speech-arm', token) !== true) return false;
+    return ipcRenderer.sendSync('hl-native-wake-enable', token) === true;
+  } catch (_) {
+    return false;
+  }
+}
+
+window.addEventListener('click', (event) => {
+  speechBridge.armFromClick(event);
+  enableWakeWordFromClick(event);
+}, true);
 
 contextBridge.exposeInMainWorld('hivelogicDesktop', {
   version: () => ipcRenderer.invoke('hl-get-version'),
   cacheStats: () => ipcRenderer.invoke('hl-cache-stats'),
   recognizeOnce: speechBridge.recognizeOnce,
   cancelRecognition: speechBridge.cancelRecognition,
+  startWakeWord: () => ipcRenderer.invoke('hl-native-wake-listen'),
+  resumeWakeWord: async () => {
+    try {
+      const result = await ipcRenderer.invoke('hl-native-wake-resume');
+      return result && result.ok === true && result.enabled === true;
+    } catch (_) {
+      return false;
+    }
+  },
+  stopWakeWord: () => ipcRenderer.invoke('hl-native-wake-disable'),
+  onWakeDetected: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    const listener = () => handler();
+    ipcRenderer.on('hl-native-wake-detected', listener);
+    return () => ipcRenderer.removeListener('hl-native-wake-detected', listener);
+  },
+  onWakeResult: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    const listener = (_event, result) => handler(normalizeRecognitionResult(result));
+    ipcRenderer.on('hl-native-wake-result', listener);
+    return () => ipcRenderer.removeListener('hl-native-wake-result', listener);
+  },
   isDesktop: true,
 });
 

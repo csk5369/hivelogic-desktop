@@ -65,6 +65,46 @@ test('recognizes one transcript and rejects concurrent recognition', async () =>
   });
 });
 
+test('waits natively for Hey Reina, reports wake once, then returns one spoken request', async () => {
+  const child = fakeChild();
+  const events = [];
+  const service = createNativeSpeechService({
+    platform: 'win32',
+    spawn: () => child,
+    processTimeoutMs: 1000,
+  });
+
+  const listening = service.listenForWakeWord({
+    onWake: () => events.push('wake'),
+    wakeTimeoutMs: 1000,
+  });
+  child.stdout.emit('data', Buffer.from('WAKE\r\n'));
+  child.stdout.emit('data', Buffer.from(encoded('What needs attention today?')));
+  child.emit('close', 0);
+
+  assert.deepEqual(events, ['wake']);
+  assert.deepEqual(await listening, {
+    ok: true,
+    transcript: 'What needs attention today?',
+  });
+});
+
+test('wake listener reports a bounded timeout and can be cancelled', async () => {
+  const timedOut = fakeChild();
+  const service = createNativeSpeechService({ platform: 'win32', spawn: () => timedOut });
+  const waiting = service.listenForWakeWord({ wakeTimeoutMs: 1000 });
+  timedOut.stdout.emit('data', Buffer.from('WAKE_TIMEOUT'));
+  timedOut.emit('close', 0);
+  assert.deepEqual(await waiting, { ok: false, code: 'timeout' });
+
+  const cancelChild = fakeChild();
+  const cancellable = createNativeSpeechService({ platform: 'win32', spawn: () => cancelChild });
+  const active = cancellable.listenForWakeWord({ wakeTimeoutMs: 1000 });
+  assert.deepEqual(await cancellable.cancelRecognition(), { ok: true });
+  assert.equal(cancelChild.killed, true);
+  assert.deepEqual(await active, { ok: false, code: 'canceled' });
+});
+
 test('cancel returns exact typed results and cleans up the child', async () => {
   const child = fakeChild();
   const service = createNativeSpeechService({

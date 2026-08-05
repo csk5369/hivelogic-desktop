@@ -44,6 +44,24 @@ let cache = null;
 let lastServedFromCache = false;
 const nativeSpeech = createNativeSpeechService();
 const speechAuthorization = createSpeechAuthorization();
+const wakeEnabledSenders = new Set();
+
+function wakePreferenceFile() {
+  return path.join(app.getPath('userData'), 'reina-voice.json');
+}
+function loadWakePreference() {
+  try {
+    const value = JSON.parse(fs.readFileSync(wakePreferenceFile(), 'utf8'));
+    return value && value.enabled === true;
+  } catch (_) {
+    return false;
+  }
+}
+function saveWakePreference(enabled) {
+  try {
+    fs.writeFileSync(wakePreferenceFile(), JSON.stringify({ enabled: enabled === true }));
+  } catch (_) {}
+}
 
 function trustedMainSender(event) {
   try {
@@ -226,6 +244,7 @@ function createWindow() {
   mainWindow.on('close', () => saveWindowState(mainWindow));
   mainWindow.on('closed', () => {
     speechAuthorization.clear();
+    wakeEnabledSenders.clear();
     nativeSpeech.cancelRecognition();
     mainWindow = null;
   });
@@ -310,6 +329,48 @@ ipcMain.handle('hl-native-speech-cancel', (event) => {
   // still clear it explicitly.
   return nativeSpeech.cancelRecognition();
 });
+ipcMain.on('hl-native-wake-enable', (event, token) => {
+  event.returnValue = false;
+  if (!trustedMainSender(event)) return;
+  try {
+    if (!speechAuthorization.consume(event.sender.id, token)) return;
+    wakeEnabledSenders.add(event.sender.id);
+    saveWakePreference(true);
+    event.returnValue = true;
+  } catch (_) {
+    event.returnValue = false;
+  }
+});
+ipcMain.handle('hl-native-wake-resume', (event) => {
+  if (!trustedMainSender(event) || !loadWakePreference()) return { ok: false, enabled: false };
+  wakeEnabledSenders.add(event.sender.id);
+  return { ok: true, enabled: true };
+});
+ipcMain.handle('hl-native-wake-listen', async (event) => {
+  if (!trustedMainSender(event) || !wakeEnabledSenders.has(event.sender.id)) {
+    return { ok: false, code: 'permission_denied' };
+  }
+  const sender = event.sender;
+  const ownerId = sender.id;
+  const result = await nativeSpeech.listenForWakeWord({
+    onWake() {
+      if (wakeEnabledSenders.has(ownerId) && !sender.isDestroyed()) {
+        sender.send('hl-native-wake-detected');
+      }
+    },
+  });
+  if (wakeEnabledSenders.has(ownerId) && !sender.isDestroyed()) {
+    sender.send('hl-native-wake-result', result);
+  }
+  return result;
+});
+ipcMain.handle('hl-native-wake-disable', async (event) => {
+  if (!trustedMainSender(event)) return { ok: false };
+  wakeEnabledSenders.delete(event.sender.id);
+  saveWakePreference(false);
+  await nativeSpeech.cancelRecognition();
+  return { ok: true };
+});
 
 /* ------------------------------------------------------------------ */
 /* App lifecycle                                                        */
@@ -354,5 +415,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   speechAuthorization.clear();
+  wakeEnabledSenders.clear();
   nativeSpeech.cancelRecognition();
 });

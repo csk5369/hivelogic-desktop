@@ -17,7 +17,11 @@ function isTrustedOrigin(value, trustedOrigin = TRUSTED_APP_ORIGIN) {
 
 function isTrustedIpcSender(event, trustedOrigin = TRUSTED_APP_ORIGIN) {
   try {
-    const senderUrl = event && event.senderFrame && event.senderFrame.url;
+    const senderUrl =
+      (event && event.senderFrame && event.senderFrame.url) ||
+      (event && event.sender && typeof event.sender.getURL === 'function'
+        ? event.sender.getURL()
+        : '');
     return isTrustedOrigin(senderUrl, trustedOrigin);
   } catch (_) {
     return false;

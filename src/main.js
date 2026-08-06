@@ -364,6 +364,12 @@ ipcMain.handle('hl-native-wake-listen', async (event) => {
   }
   return result;
 });
+ipcMain.handle('hl-native-wake-cancel', async (event) => {
+  if (!trustedMainSender(event) || !wakeEnabledSenders.has(event.sender.id)) return { ok: false };
+  // A listener attempt ending is not an opt-out. Keep the persisted Voice
+  // preference so the page can re-arm after a timeout or completed turn.
+  return nativeSpeech.cancelRecognition();
+});
 ipcMain.handle('hl-native-wake-disable', async (event) => {
   if (!trustedMainSender(event)) return { ok: false };
   wakeEnabledSenders.delete(event.sender.id);

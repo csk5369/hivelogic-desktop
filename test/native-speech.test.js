@@ -90,14 +90,18 @@ test('waits natively for Hey Reina, reports wake once, then returns one spoken r
   });
 });
 
-test('keeps the native wake recognizer open through the configured wake window', () => {
+test('uses continuous native recognition through the configured wake window', () => {
   assert.match(
     POWERSHELL_WAKE_SCRIPT,
     /\$recognizer\.InitialSilenceTimeout = \[TimeSpan\]::FromMinutes\(15\)/,
   );
   assert.match(
     POWERSHELL_WAKE_SCRIPT,
-    /\$wake = \$recognizer\.Recognize\(\[TimeSpan\]::FromMinutes\(15\)\)/,
+    /\$recognizer\.RecognizeAsync\(\[System\.Speech\.Recognition\.RecognizeMode\]::Multiple\)/,
+  );
+  assert.match(
+    POWERSHELL_WAKE_SCRIPT,
+    /\$wakeDeadline = \[DateTime\]::UtcNow\.AddMinutes\(15\)/,
   );
 });
 

@@ -168,7 +168,10 @@ contextBridge.exposeInMainWorld('hivelogicDesktop', {
       return false;
     }
   },
-  stopWakeWord: () => ipcRenderer.invoke('hl-native-wake-disable'),
+  // This only cancels the current recognition attempt. It must not clear the
+  // persisted hands-free preference during normal Voice lifecycle cleanup.
+  stopWakeWord: () => ipcRenderer.invoke('hl-native-wake-cancel'),
+  disableWakeWord: () => ipcRenderer.invoke('hl-native-wake-disable'),
   onWakeDetected: (handler) => {
     if (typeof handler !== 'function') return () => {};
     const listener = () => handler();

@@ -16,8 +16,12 @@ test('sandbox preload has no local require and exposes native recognition', asyn
   const listeners = new Map();
   let exposed;
   let invokeResult = { ok: true, transcript: 'Hello from native speech' };
+  const invokedChannels = [];
   const ipcRenderer = {
-    invoke: async () => invokeResult,
+    invoke: async (channel) => {
+      invokedChannels.push(channel);
+      return invokeResult;
+    },
     on() {},
     sendSync(channel, token) {
       return channel === 'hl-native-speech-arm' && /^[a-f0-9]{32}$/.test(token);
@@ -60,6 +64,14 @@ test('sandbox preload has no local require and exposes native recognition', asyn
 
   assert.equal(typeof exposed.recognizeOnce, 'function');
   assert.equal(typeof exposed.cancelRecognition, 'function');
+  assert.equal(typeof exposed.stopWakeWord, 'function');
+  assert.equal(typeof exposed.disableWakeWord, 'function');
+  await exposed.stopWakeWord();
+  await exposed.disableWakeWord();
+  assert.deepEqual(invokedChannels.slice(0, 2), [
+    'hl-native-wake-cancel',
+    'hl-native-wake-disable',
+  ]);
   assert.equal(exposed.isDesktop, true);
   assert.equal(
     JSON.stringify(await exposed.recognizeOnce()),

@@ -1,7 +1,7 @@
 {
   "name": "hivelogic-desktop",
   "productName": "HiveLogic",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "HiveLogic — AI-powered Construction Business Operating System. Desktop app.",
   "main": "src/main.js",
   "author": "GH Group <chris@ghgrp.net>",

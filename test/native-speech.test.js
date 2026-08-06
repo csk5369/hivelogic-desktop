@@ -4,6 +4,7 @@ const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  POWERSHELL_WAKE_SCRIPT,
   createNativeSpeechService,
   parseRecognizerOutput,
   sanitizeTranscript,
@@ -87,6 +88,17 @@ test('waits natively for Hey Reina, reports wake once, then returns one spoken r
     ok: true,
     transcript: 'What needs attention today?',
   });
+});
+
+test('keeps the native wake recognizer open through the configured wake window', () => {
+  assert.match(
+    POWERSHELL_WAKE_SCRIPT,
+    /\$recognizer\.InitialSilenceTimeout = \[TimeSpan\]::FromMinutes\(15\)/,
+  );
+  assert.match(
+    POWERSHELL_WAKE_SCRIPT,
+    /\$wake = \$recognizer\.Recognize\(\[TimeSpan\]::FromMinutes\(15\)\)/,
+  );
 });
 
 test('wake listener reports a bounded timeout and can be cancelled', async () => {

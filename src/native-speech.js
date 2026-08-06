@@ -74,6 +74,10 @@ try {
   $wakeBuilder.Append('hey reina')
   $recognizer.LoadGrammar((New-Object System.Speech.Recognition.Grammar($wakeBuilder)))
   $recognizer.SetInputToDefaultAudioDevice()
+  # Recognize(TimeSpan) is an overall cap, not an initial-silence setting.
+  # Without this, Windows gives up after its short default silence period,
+  # before the user has a reasonable chance to say the wake phrase.
+  $recognizer.InitialSilenceTimeout = [TimeSpan]::FromMinutes(15)
   $wake = $recognizer.Recognize([TimeSpan]::FromMinutes(15))
   if ($null -eq $wake -or $wake.Text -ine 'hey reina') {
     [Console]::Out.Write('WAKE_TIMEOUT')

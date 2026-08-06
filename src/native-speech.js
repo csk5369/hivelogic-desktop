@@ -74,12 +74,25 @@ try {
   $wakeBuilder.Append('hey reina')
   $recognizer.LoadGrammar((New-Object System.Speech.Recognition.Grammar($wakeBuilder)))
   $recognizer.SetInputToDefaultAudioDevice()
-  # Recognize(TimeSpan) is an overall cap, not an initial-silence setting.
-  # Without this, Windows gives up after its short default silence period,
-  # before the user has a reasonable chance to say the wake phrase.
+  # Synchronous Recognize() can return after a short idle interval even when
+  # InitialSilenceTimeout is longer. Use the Windows continuous recognizer for
+  # the wake phrase and apply our own bounded wall-clock deadline.
   $recognizer.InitialSilenceTimeout = [TimeSpan]::FromMinutes(15)
-  $wake = $recognizer.Recognize([TimeSpan]::FromMinutes(15))
-  if ($null -eq $wake -or $wake.Text -ine 'hey reina') {
+  $wakeHit = $false
+  $recognizer.add_SpeechRecognized({
+    param($sender, $eventArgs)
+    if ($eventArgs.Result.Text -ieq 'hey reina') {
+      $script:wakeHit = $true
+      $sender.RecognizeAsyncStop()
+    }
+  })
+  $recognizer.RecognizeAsync([System.Speech.Recognition.RecognizeMode]::Multiple)
+  $wakeDeadline = [DateTime]::UtcNow.AddMinutes(15)
+  while (-not $script:wakeHit -and [DateTime]::UtcNow -lt $wakeDeadline) {
+    Start-Sleep -Milliseconds 100
+  }
+  if (-not $script:wakeHit) {
+    $recognizer.RecognizeAsyncCancel()
     [Console]::Out.Write('WAKE_TIMEOUT')
   } else {
     [Console]::Out.Write('WAKE' + [Environment]::NewLine)

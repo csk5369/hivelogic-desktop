@@ -9,9 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Create release v1.0.2 with installer assets
+      - name: Create release v1.0.4 with installer assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v1.0.2 --repo $GITHUB_REPOSITORY && exit 0
-          gh release create v1.0.2 --repo $GITHUB_REPOSITORY --title "HiveLogic Desktop v1.0.2" --notes "First public build. Windows installer with auto-update." "HiveLogic-Setup.exe" "latest.yml" "HiveLogic-Setup.exe.blockmap"
+          gh release view v1.0.4 --repo $GITHUB_REPOSITORY && exit 0
+          gh release create v1.0.4 --repo $GITHUB_REPOSITORY --title "HiveLogic Desktop v1.0.4" --notes "Reliable Reina Voice microphone support for the sandboxed HiveLogic desktop app." "HiveLogic-Setup.exe" "latest.yml" "HiveLogic-Setup.exe.blockmap"

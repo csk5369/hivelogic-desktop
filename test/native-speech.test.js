@@ -24,6 +24,31 @@ function fakeChild() {
   return child;
 }
 
+/* A real spawned child holds ref'd stdio handles, so the event loop stays
+   alive while native-speech's own timeout timer -- which is deliberately
+   unref'd, so a stray recognition can never hold the app open -- counts down.
+   fakeChild() holds no handle at all, so in a test the ONLY thing left
+   pending is that unref'd timer, and Node is entitled to decide the loop is
+   done and settle nothing: "Promise resolution is still pending but the event
+   loop has already resolved".
+
+   Whether it got away with it came down to whether something else in the
+   process happened to keep the loop alive for those few milliseconds, which
+   is why this passed on Windows and cancelled five tests on Linux CI. It was
+   a coin toss, not a platform rule.
+
+   So any await that is waiting on that unref'd timer gets a ref'd one of its
+   own for exactly as long as it waits. The fix belongs here, in the double,
+   not in src/: unref'ing that timer is correct in the real app. */
+async function awaitingUnrefdTimer(promise) {
+  const keepAlive = setInterval(() => {}, 50);
+  try {
+    return await promise;
+  } finally {
+    clearInterval(keepAlive);
+  }
+}
+
 test('parses only bounded fixed-protocol recognizer output', () => {
   assert.deepEqual(parseRecognizerOutput(encoded('  Hello, Reina.  ')), {
     ok: true,
@@ -163,7 +188,7 @@ test('times out, terminates the child, and never exposes process errors', async 
     spawn: () => child,
     processTimeoutMs: 5,
   });
-  assert.deepEqual(await service.recognizeOnce(), {
+  assert.deepEqual(await awaitingUnrefdTimer(service.recognizeOnce()), {
     ok: false,
     code: 'timeout',
   });

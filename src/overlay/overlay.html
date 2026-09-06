@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:;">
+<title>HiveLogic — screen markup</title>
+<style>
+  /* The window itself is transparent; everything painted here is a real pixel
+     on the real desktop, which is why the screen-share capture picks the marks
+     up with no network sync at all. */
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  body.hl-drawing { cursor: crosshair; }
+
+  #sheet {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Chris, 2026-09-06: the thing that makes a full-screen overlay frightening
+     is not seeing it. While the sheet is armed, the mouse belongs to it and
+     clicks do NOT reach the app underneath — so the screen edge says so, all
+     the way round, in the same accent the call border uses. When it is
+     click-through the border is gone entirely, because then nothing has
+     changed about the mouse and a permanent frame would just be noise. */
+  #edge {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    border: 3px solid rgba(198, 91, 78, .92);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22),
+                inset 0 0 22px rgba(198, 91, 78, .30);
+    opacity: 0;
+    transition: opacity .16s ease;
+  }
+  body.hl-drawing #edge { opacity: 1; }
+</style>
+</head>
+<body>
+  <canvas id="sheet"></canvas>
+  <div id="edge" aria-hidden="true"></div>
+  <script src="./vendor/draw.js"></script>
+  <script src="./overlay.js"></script>
+</body>
+</html>

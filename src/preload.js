@@ -154,9 +154,62 @@ window.addEventListener('click', (event) => {
   enableWakeWordFromClick(event);
 }, true);
 
+/* ---------------- draw on the whole screen ----------------
+ *
+ * Chris, 2026-09-06: "i need to be able to draw on my whole screen on a call,
+ * not just inside hivelogic".
+ *
+ * Cowork's canvas is sealed inside the web page and always will be. This is
+ * the door out to the main process, which owns real OS windows and can cover
+ * every monitor. The page (cowork-markup.js in hivelogic-live) only ever gets
+ * to say start, stop and "what is it doing" — never where, never how big.
+ *
+ * Everything crossing back is reduced to two booleans before the page sees
+ * it, so nothing structural from the main process is handed to page script.
+ */
+function normalizeAnnotateState(value) {
+  return {
+    ok: ownData(value, 'ok') !== false,
+    active: ownData(value, 'active') === true,
+    drawing: ownData(value, 'drawing') === true,
+  };
+}
+
 contextBridge.exposeInMainWorld('hivelogicDesktop', {
   version: () => ipcRenderer.invoke('hl-get-version'),
   cacheStats: () => ipcRenderer.invoke('hl-cache-stats'),
+  startScreenAnnotate: async () => {
+    try {
+      return normalizeAnnotateState(await ipcRenderer.invoke('hl-screen-annotate-start'));
+    } catch (_) {
+      return { ok: false, active: false, drawing: false };
+    }
+  },
+  stopScreenAnnotate: async () => {
+    try {
+      return normalizeAnnotateState(await ipcRenderer.invoke('hl-screen-annotate-stop'));
+    } catch (_) {
+      return { ok: false, active: false, drawing: false };
+    }
+  },
+  screenAnnotateState: async () => {
+    try {
+      return normalizeAnnotateState(await ipcRenderer.invoke('hl-screen-annotate-state'));
+    } catch (_) {
+      return { ok: false, active: false, drawing: false };
+    }
+  },
+  // The session can end from three places the page cannot see: the toolbar's
+  // Stop button, Escape on a sheet, and the global hotkey. Without this the
+  // button in Cowork would sit there lit, claiming a mode that ended minutes
+  // ago — the same "the screen does not say" complaint the permission chip in
+  // cowork-markup.js was built to answer.
+  onScreenAnnotateState: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    const listener = (_event, state) => handler(normalizeAnnotateState(state));
+    ipcRenderer.on('hl-screen-annotate-state', listener);
+    return () => ipcRenderer.removeListener('hl-screen-annotate-state', listener);
+  },
   recognizeOnce: speechBridge.recognizeOnce,
   cancelRecognition: speechBridge.cancelRecognition,
   startWakeWord: () => ipcRenderer.invoke('hl-native-wake-listen'),

@@ -1,0 +1,7 @@
+# The vendored copy of hivelogic-live's draw.js is pinned by a sha256 in
+# test/screen-annotate-vendor.test.js, so its bytes have to be the same on
+# every machine. Without this, Git hands a Windows checkout CRLF and a Linux
+# checkout LF, the hashes differ, and the drift test fails on one platform
+# while passing on the other -- which reads as "the vendored engine changed"
+# when nothing changed at all.
+src/overlay/vendor/draw.js text eol=lf

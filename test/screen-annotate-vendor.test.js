@@ -29,10 +29,23 @@ const DRAW_PATH = path.join(VENDOR_DIR, 'draw.js');
 // hivelogic-live @ 03ab41edfde7f208e8fad51f84099e108afc4d47.
 // Changing this line without re-copying the file is the mistake this guards.
 const EXPECTED_SHA256 =
-  'a9b894c51485e1fbde1143098297f54cc9a57a3828d1b258ef26d414e8c5c20e';
+  'ffc0f1d467f7e8b5d70c20ad35cafe575c226c541b5488b3c6d5bc7e80ba96ce';
 
 test('the vendored draw.js is still the untouched hivelogic-live copy', () => {
   const bytes = fs.readFileSync(DRAW_PATH);
+
+  // Checked separately so the failure says which of the two things went wrong.
+  // Git hands a Windows checkout CRLF and a Linux checkout LF unless told
+  // otherwise, and a hash mismatch caused by line endings alone would read as
+  // "the drawing engine changed" when nothing changed at all. .gitattributes
+  // pins this file to LF; this is the assertion that notices if that is lost.
+  assert.equal(
+    bytes.includes(0x0d),
+    false,
+    'src/overlay/vendor/draw.js has CRLF line endings. .gitattributes should '
+    + 'pin it to LF (text eol=lf) so its bytes are the same on every machine.'
+  );
+
   const actual = crypto.createHash('sha256').update(bytes).digest('hex');
   assert.equal(
     actual,

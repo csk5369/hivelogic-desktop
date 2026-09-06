@@ -5,7 +5,7 @@
 
 - Copied from: `hivelogic-live` commit `03ab41edfde7f208e8fad51f84099e108afc4d47`
   (`draw.js` itself last changed in `64fc580`).
-- sha256 of the copy: `a9b894c51485e1fbde1143098297f54cc9a57a3828d1b258ef26d414e8c5c20e`
+- sha256 of the copy: `ffc0f1d467f7e8b5d70c20ad35cafe575c226c541b5488b3c6d5bc7e80ba96ce`
 
 ## Why it is a copy and not a dependency
 

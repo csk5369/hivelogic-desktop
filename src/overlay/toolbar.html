@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline';">
+<title>HiveLogic — screen markup controls</title>
+<style>
+  /* Every control on this bar is labelled in words and does exactly one
+     thing. It floats over whatever Chris is presenting, he is talking while he
+     uses it, and there is no menu to go looking in — so "obviously has a
+     button for everything" beats clever, every time. */
+  :root {
+    --ink: #eef1f7;
+    --ink-dim: #a3aec4;
+    --card: #161b27;
+    --card-edge: #2b3346;
+    --btn: #232b3c;
+    --btn-edge: #3a4459;
+    --btn-hover: #2c3550;
+    --accent: #3b6fd4;
+    --accent-hi: #4d83ea;
+    --stop: #a33c31;
+    --stop-hi: #c04a3d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: transparent;
+    color: var(--ink);
+    font: 400 13px/1.35 "Segoe UI", -apple-system, Roboto, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+  }
+
+  #card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .55);
+    /* Frameless window: the card is the title bar. Buttons opt back out
+       below, or the first click on one would start a window drag instead. */
+    -webkit-app-region: drag;
+  }
+
+  #head { display: flex; align-items: center; gap: 8px; height: 18px; }
+  #grip {
+    width: 22px; height: 8px; flex: none;
+    background-image: radial-gradient(circle, var(--btn-edge) 1.4px, transparent 1.5px);
+    background-size: 5px 4px;
+  }
+  #title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .row { display: flex; align-items: center; gap: 8px; }
+  #swatches { display: flex; gap: 7px; margin-right: auto; }
+
+  button, .sw { -webkit-app-region: no-drag; }
+
+  .sw {
+    width: 26px; height: 26px; flex: none;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .16);
+    cursor: pointer;
+    padding: 0;
+  }
+  .sw:hover { box-shadow: 0 0 0 1px rgba(255, 255, 255, .5); }
+  .sw.on {
+    border-color: var(--ink);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .6);
+  }
+  .sw:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+
+  .btn {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid var(--btn-edge);
+    background: var(--btn);
+    color: var(--ink);
+    font: 600 12.5px "Segoe UI", -apple-system, Roboto, sans-serif;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--btn-hover); }
+  .btn:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+  .btn[disabled] {
+    opacity: .42;
+    cursor: default;
+    background: var(--btn);
+  }
+
+  /* The two decisions on this bar are not the same size, so they do not look
+     the same size. Draw is the thing he presses over and over; Stop is the way
+     out and reads as the way out. */
+  #draw {
+    flex: 1 1 auto;
+    height: 38px;
+    font-size: 13.5px;
+    background: var(--btn);
+  }
+  #draw.on {
+    background: var(--accent);
+    border-color: var(--accent-hi);
+    color: #fff;
+  }
+  #draw.on:hover { background: var(--accent-hi); }
+
+  #stop {
+    height: 38px;
+    padding: 0 14px;
+    background: var(--stop);
+    border-color: var(--stop-hi);
+    color: #fff;
+  }
+  #stop:hover { background: var(--stop-hi); }
+</style>
+</head>
+<body>
+  <div id="card">
+    <div id="head">
+      <div id="grip" aria-hidden="true"></div>
+      <span id="title">Marking your screen</span>
+    </div>
+
+    <div class="row">
+      <div id="swatches" role="group" aria-label="Pen colour"></div>
+      <button class="btn" id="undo" type="button" disabled>Undo</button>
+      <button class="btn" id="clear" type="button" disabled>Clear all</button>
+    </div>
+
+    <div class="row">
+      <button class="btn" id="draw" type="button" aria-pressed="false">Draw</button>
+      <button class="btn" id="stop" type="button">Stop</button>
+    </div>
+  </div>
+  <script src="./toolbar.js"></script>
+</body>
+</html>

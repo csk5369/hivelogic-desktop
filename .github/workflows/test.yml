@@ -1,0 +1,22 @@
+name: tests
+# This repo had no test workflow at all — `npm test` existed and nothing ever
+# ran it, so every test in test/ was decorative. Screen markup is the feature
+# that made that unacceptable: it can cover somebody's entire screen with an
+# always-on-top window, and the tests that prove every way out of that mode
+# still works are only worth writing if something runs them.
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No `npm ci`: the only runtime dependency is electron-updater, which
+      # none of these tests touch, and installing Electron itself on CI to run
+      # pure-logic tests would take minutes to prove nothing.
+      - run: npm test

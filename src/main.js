@@ -614,7 +614,24 @@ app.whenReady().then(() => {
           { role: 'forceReload' },
           { type: 'separator' },
           { role: 'resetZoom' },
-          { role: 'zoomIn' },
+          // Electron's zoomIn role only binds "CmdOrCtrl+Plus" -- the literal
+          // '+' character. On a normal keyboard the physical key next to '0'
+          // sends '=' unless Shift is held, so the shortcut people actually
+          // press (Ctrl and the +/= key, no Shift) never matched, while
+          // resetZoom (Ctrl+0) and zoomOut (Ctrl+-) worked fine because '0'
+          // and '-' have no such ambiguity. A second, hidden accelerator for
+          // the literal '=' key fixes it without changing what shows in the
+          // menu. (Chris, 2026-09-07: zoomed out worked, zoom back in did not.)
+          {
+            label: 'Zoom In',
+            accelerator: 'CommandOrControl+=',
+            click: (menuItem, browserWindow) => {
+              if (!browserWindow) return;
+              const wc = browserWindow.webContents;
+              wc.setZoomLevel(wc.getZoomLevel() + 0.5);
+            },
+          },
+          { role: 'zoomIn', visible: false, acceleratorWorksWhenHidden: true },
           { role: 'zoomOut' },
           { type: 'separator' },
           { role: 'togglefullscreen' },

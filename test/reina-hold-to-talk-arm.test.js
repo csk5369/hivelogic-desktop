@@ -177,3 +177,51 @@ test('H4: the inline preload.js copy exposes armFromHoldGesture wired to pointer
     'the keyboard hold-to-talk equivalent (Space/Enter) must be armed too'
   );
 });
+
+/* ------------------------------------------------------------------ */
+/* H5 — main.js must assign event.returnValue exactly once per sync    */
+/* IPC handler (the real remaining bug, found live on 2026-09-07)      */
+/* ------------------------------------------------------------------ */
+
+test('H5: hl-native-speech-arm and hl-native-wake-enable each assign event.returnValue exactly once', () => {
+  // Live regression, 2026-09-07: both handlers set event.returnValue = false
+  // as an up-front placeholder, then reassigned it to the real result deeper
+  // in the function. The renderer's ipcRenderer.sendSync() always received
+  // the FIRST assignment (false) -- the second assignment never reached the
+  // caller, even though re-reading event.returnValue immediately afterward,
+  // in the SAME function, showed the new value. Confirmed live: a real,
+  // correctly-armed hold-to-talk press on #rnaVoice still failed closed with
+  // "permission denied" because of this, independent of every other fix in
+  // this file and in reina-pilot-host.js. There is no way to reproduce the
+  // real Electron IpcMainEvent.returnValue semantics that caused this outside
+  // Electron itself, so this test guards the shape of the fix directly:
+  // each handler must compute its result first and assign
+  // event.returnValue exactly once, at the end.
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+
+  function handlerBody(channel) {
+    const start = mainSource.indexOf(`ipcMain.on('${channel}'`);
+    assert.ok(start !== -1, `ipcMain.on('${channel}', ...) not found in main.js`);
+    // Match balanced braces from the handler's opening '{' to its closing '}'.
+    const openIndex = mainSource.indexOf('{', start);
+    let depth = 0;
+    for (let i = openIndex; i < mainSource.length; i += 1) {
+      if (mainSource[i] === '{') depth += 1;
+      else if (mainSource[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return mainSource.slice(openIndex, i + 1);
+      }
+    }
+    throw new Error(`could not find the end of the ${channel} handler`);
+  }
+
+  for (const channel of ['hl-native-speech-arm', 'hl-native-wake-enable']) {
+    const body = handlerBody(channel);
+    const assignments = body.match(/event\.returnValue\s*=/g) || [];
+    assert.equal(
+      assignments.length, 1,
+      `${channel} must assign event.returnValue exactly once (found ${assignments.length}) -- ` +
+      'a second assignment silently overrides nothing and the renderer keeps the first value'
+    );
+  }
+});

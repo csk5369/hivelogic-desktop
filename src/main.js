@@ -473,13 +473,24 @@ ipcMain.handle('hl-restart-to-update', () => {
   } catch (_) {}
 });
 ipcMain.on('hl-native-speech-arm', (event, token) => {
-  event.returnValue = false;
-  if (!trustedMainSender(event)) return;
+  // Compute the final answer first and assign event.returnValue exactly
+  // once. Assigning it twice (a placeholder up front, then the real
+  // result) silently locks in the FIRST assignment as what the renderer's
+  // sendSync() actually receives -- the second assignment has no effect
+  // on the reply, even though re-reading event.returnValue afterwards
+  // still shows the newer value inside this same function. That made
+  // arm() always report failure to the renderer regardless of its real
+  // result, which is why a real, correctly-armed hold-to-talk press still
+  // failed closed with "permission denied".
+  let result = false;
   try {
-    event.returnValue = speechAuthorization.arm(event.sender.id, token);
+    if (trustedMainSender(event)) {
+      result = speechAuthorization.arm(event.sender.id, token) === true;
+    }
   } catch (_) {
-    event.returnValue = false;
+    result = false;
   }
+  event.returnValue = result;
 });
 ipcMain.handle('hl-native-speech-recognize-once', (event, token) => {
   if (
@@ -500,16 +511,20 @@ ipcMain.handle('hl-native-speech-cancel', (event) => {
   return nativeSpeech.cancelRecognition();
 });
 ipcMain.on('hl-native-wake-enable', (event, token) => {
-  event.returnValue = false;
-  if (!trustedMainSender(event)) return;
+  // Same fix as hl-native-speech-arm above: assign event.returnValue
+  // exactly once, at the end, with the real result -- not a placeholder
+  // followed by a real value, which silently locks in the placeholder.
+  let result = false;
   try {
-    if (!speechAuthorization.consume(event.sender.id, token)) return;
-    wakeEnabledSenders.add(event.sender.id);
-    saveWakePreference(true);
-    event.returnValue = true;
+    if (trustedMainSender(event) && speechAuthorization.consume(event.sender.id, token)) {
+      wakeEnabledSenders.add(event.sender.id);
+      saveWakePreference(true);
+      result = true;
+    }
   } catch (_) {
-    event.returnValue = false;
+    result = false;
   }
+  event.returnValue = result;
 });
 ipcMain.handle('hl-native-wake-resume', (event) => {
   if (!trustedMainSender(event) || !loadWakePreference()) return { ok: false, enabled: false };

@@ -1,6 +1,14 @@
 'use strict';
 
 const VOICE_START_SELECTOR = 'button.reina-pilot-voice-start';
+// The real production "Talk to Reina" control (#rnaVoice / .rnaVoiceButton).
+// It is a press-and-hold control, not a click target: the site binds
+// pointerdown/keydown (space, enter), not click, and calls
+// event.preventDefault() on pointerdown -- which in Chromium suppresses the
+// synthesized click that would otherwise follow. armFromClick's click-only
+// gate can never arm for this button; armFromHoldGesture below is the
+// equivalent gate for its actual gesture.
+const HOLD_TO_TALK_SELECTOR = '#rnaVoice, .rnaVoiceButton';
 const MAX_TRANSCRIPT_CHARS = 1000;
 const FAILURE_CODES = new Set([
   'no_speech',
@@ -98,6 +106,38 @@ function createPreloadSpeechBridge(options) {
     }
   }
 
+  // Same intent as armFromClick -- only a real, trusted press on the actual
+  // voice-start control may arm native recognition -- applied to the real
+  // button's real gesture: pointerdown (mouse/touch) or a keydown of Space/
+  // Enter (keyboard hold-to-talk), never a synthesized or repeated event.
+  function armFromHoldGesture(event) {
+    pendingToken = null;
+    try {
+      if (!event || event.isTrusted !== true) return false;
+      if (event.type === 'pointerdown') {
+        if (event.button !== 0) return false;
+      } else if (event.type === 'keydown') {
+        if (event.repeat) return false;
+        const key = event.key;
+        if (key !== ' ' && key !== 'Spacebar' && key !== 'Enter') return false;
+      } else {
+        return false;
+      }
+      const target = event.target;
+      const button = target && target.closest(HOLD_TO_TALK_SELECTOR);
+      if (!button || button.disabled === true || button.isConnected !== true) {
+        return false;
+      }
+      const token = createToken(randomValues);
+      if (armSynchronously(token) !== true) return false;
+      pendingToken = token;
+      return true;
+    } catch (_) {
+      pendingToken = null;
+      return false;
+    }
+  }
+
   async function recognizeOnce() {
     const token = pendingToken;
     pendingToken = null;
@@ -121,12 +161,13 @@ function createPreloadSpeechBridge(options) {
     }
   }
 
-  return Object.freeze({ armFromClick, recognizeOnce, cancelRecognition });
+  return Object.freeze({ armFromClick, armFromHoldGesture, recognizeOnce, cancelRecognition });
 }
 
 module.exports = {
   FAILURE_CODES,
   VOICE_START_SELECTOR,
+  HOLD_TO_TALK_SELECTOR,
   createPreloadSpeechBridge,
   normalizeCancelResult,
   normalizeRecognitionResult,

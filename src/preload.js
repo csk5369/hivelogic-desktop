@@ -9,6 +9,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 // the entire desktop API from being exposed.
 const VOICE_START_SELECTOR = 'button.reina-pilot-voice-start';
 const WAKE_WORD_START_SELECTOR = 'button#rnaVoiceToggle';
+// The real production "Talk to Reina" control (#rnaVoice / .rnaVoiceButton).
+// It is press-and-hold, not click: the site binds pointerdown/keydown and
+// calls preventDefault() on pointerdown, which suppresses the synthesized
+// click armFromClick relies on. armFromHoldGesture is the equivalent gate
+// for this button's actual gesture. See src/preload-speech.js.
+const HOLD_TO_TALK_SELECTOR = '#rnaVoice, .rnaVoiceButton';
 const MAX_TRANSCRIPT_CHARS = 1000;
 const SPEECH_FAILURE_CODES = new Set([
   'no_speech',
@@ -131,7 +137,39 @@ function createPreloadSpeechBridge() {
     }
   }
 
-  return Object.freeze({ armFromClick, recognizeOnce, cancelRecognition });
+  // Same intent as armFromClick -- only a real, trusted press on the actual
+  // voice-start control may arm native recognition -- applied to the real
+  // button's real gesture: pointerdown (mouse/touch) or a keydown of Space/
+  // Enter (keyboard hold-to-talk), never a synthesized or repeated event.
+  function armFromHoldGesture(event) {
+    pendingToken = null;
+    try {
+      if (!event || event.isTrusted !== true) return false;
+      if (event.type === 'pointerdown') {
+        if (event.button !== 0) return false;
+      } else if (event.type === 'keydown') {
+        if (event.repeat) return false;
+        const key = event.key;
+        if (key !== ' ' && key !== 'Spacebar' && key !== 'Enter') return false;
+      } else {
+        return false;
+      }
+      const target = event.target;
+      const button = target && target.closest(HOLD_TO_TALK_SELECTOR);
+      if (!button || button.disabled === true || button.isConnected !== true) {
+        return false;
+      }
+      const token = createSpeechToken();
+      if (ipcRenderer.sendSync('hl-native-speech-arm', token) !== true) return false;
+      pendingToken = token;
+      return true;
+    } catch (_) {
+      pendingToken = null;
+      return false;
+    }
+  }
+
+  return Object.freeze({ armFromClick, armFromHoldGesture, recognizeOnce, cancelRecognition });
 }
 
 const speechBridge = createPreloadSpeechBridge();
@@ -152,6 +190,17 @@ function enableWakeWordFromClick(event) {
 window.addEventListener('click', (event) => {
   speechBridge.armFromClick(event);
   enableWakeWordFromClick(event);
+}, true);
+
+// Hold-to-talk's real gesture is pointerdown (mouse/touch) or a keydown of
+// Space/Enter -- never click, see HOLD_TO_TALK_SELECTOR above. These run in
+// the capture phase, same as the click listener, so the token is armed
+// before the button's own (bubble-phase) handler starts native recognition.
+window.addEventListener('pointerdown', (event) => {
+  speechBridge.armFromHoldGesture(event);
+}, true);
+window.addEventListener('keydown', (event) => {
+  speechBridge.armFromHoldGesture(event);
 }, true);
 
 /* ---------------- draw on the whole screen ----------------

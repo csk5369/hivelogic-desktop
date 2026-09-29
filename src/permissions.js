@@ -28,6 +28,12 @@ function isTrustedIpcSender(event, trustedOrigin = TRUSTED_APP_ORIGIN) {
   }
 }
 
+// Audio-only stays exactly as before. Widened on top of it, still gated to
+// the trusted origin:
+//   - camera requests: mediaTypes includes 'video' (alone or with 'audio')
+//   - screen share requests: mediaTypes is an empty array — confirmed by
+//     direct testing to be how this Electron version reports a
+//     getDisplayMedia() request, which has no "mediaTypes" of its own.
 function isExactAudioMediaRequest(permission, details) {
   if (permission !== 'media' || !details || typeof details !== 'object') {
     return false;
@@ -43,12 +49,36 @@ function isExactAudioMediaRequest(permission, details) {
   return details.mediaType === 'audio';
 }
 
+function isCameraMediaRequest(permission, details) {
+  if (permission !== 'media' || !details || typeof details !== 'object') {
+    return false;
+  }
+  return (
+    Array.isArray(details.mediaTypes) && details.mediaTypes.includes('video')
+  );
+}
+
+function isScreenShareMediaRequest(permission, details) {
+  if (permission !== 'media' || !details || typeof details !== 'object') {
+    return false;
+  }
+  return Array.isArray(details.mediaTypes) && details.mediaTypes.length === 0;
+}
+
+function isAllowedMediaRequest(permission, details) {
+  return (
+    isExactAudioMediaRequest(permission, details) ||
+    isCameraMediaRequest(permission, details) ||
+    isScreenShareMediaRequest(permission, details)
+  );
+}
+
 function isAllowedAudioPermissionRequest(
   permission,
   details,
   trustedOrigin = TRUSTED_APP_ORIGIN
 ) {
-  if (!isExactAudioMediaRequest(permission, details)) return false;
+  if (!isAllowedMediaRequest(permission, details)) return false;
   const requestingUrl = details.requestingUrl || details.securityOrigin || '';
   return isTrustedOrigin(requestingUrl, trustedOrigin);
 }
@@ -59,10 +89,12 @@ function isAllowedAudioPermissionCheck(
   details,
   trustedOrigin = TRUSTED_APP_ORIGIN
 ) {
-  return (
-    isExactAudioMediaRequest(permission, details) &&
-    isTrustedOrigin(requestingOrigin, trustedOrigin)
-  );
+  if (permission !== 'media' || !details || typeof details !== 'object') {
+    return false;
+  }
+  const mediaType = details.mediaType;
+  const allowedType = mediaType === 'audio' || mediaType === 'video';
+  return allowedType && isTrustedOrigin(requestingOrigin, trustedOrigin);
 }
 
 function installAudioPermissionPolicy(
@@ -106,7 +138,10 @@ module.exports = {
   installAudioPermissionPolicy,
   isAllowedAudioPermissionCheck,
   isAllowedAudioPermissionRequest,
+  isAllowedMediaRequest,
+  isCameraMediaRequest,
   isExactAudioMediaRequest,
+  isScreenShareMediaRequest,
   isTrustedIpcSender,
   isTrustedOrigin,
 };

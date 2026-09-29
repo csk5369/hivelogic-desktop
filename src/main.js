@@ -8,6 +8,7 @@ const {
   app,
   BrowserWindow,
   Menu,
+  desktopCapturer,
   globalShortcut,
   net,
   screen,
@@ -22,6 +23,7 @@ const {
   TRUSTED_APP_ORIGIN,
   installAudioPermissionPolicy,
   isTrustedIpcSender,
+  isTrustedOrigin,
 } = require('./permissions');
 const { createNativeSpeechService } = require('./native-speech');
 const { createSpeechAuthorization } = require('./speech-authorization');
@@ -281,6 +283,45 @@ function saveWindowState(win) {
       );
     }
   } catch (_) {}
+}
+
+/* ------------------------------------------------------------------ */
+/* Screen share                                                        */
+/*                                                                      */
+/* Electron has no built-in screen-share source picker on Windows (the  */
+/* native "useSystemPicker" option is macOS 15+ only), and without a    */
+/* setDisplayMediaRequestHandler registered at all, getDisplayMedia()   */
+/* fails with NotSupportedError before the user sees anything. A real   */
+/* source picker (a small window listing screens/windows by thumbnail)  */
+/* is future work; this is the simplest correct fix that lets sharing   */
+/* work today: it shares the primary screen automatically, no picker.   */
+/* ------------------------------------------------------------------ */
+function installDisplayMediaHandler(ses) {
+  ses.setDisplayMediaRequestHandler(async (request, callback) => {
+    try {
+      if (!isTrustedOrigin(request.securityOrigin, TRUSTED_APP_ORIGIN)) {
+        callback({});
+        return;
+      }
+      const sources = await desktopCapturer.getSources({ types: ['screen'] });
+      const primary = sources[0];
+      if (!primary) {
+        callback({});
+        return;
+      }
+      // System audio: when the page also asked for audio, 'loopback' is what
+      // actually carries Windows system audio into the share. Handing back
+      // { video } alone with audioRequested still true silently produces a
+      // share with no audio track at all.
+      if (request.audioRequested) {
+        callback({ video: primary, audio: 'loopback' });
+      } else {
+        callback({ video: primary });
+      }
+    } catch (_) {
+      callback({});
+    }
+  }, { useSystemPicker: true }); // no-op below macOS 15; harmless elsewhere
 }
 
 /* ------------------------------------------------------------------ */
@@ -618,6 +659,7 @@ ipcMain.on('hl-overlay-panic', (event) => {
 app.whenReady().then(() => {
   cache = new OfflineCache(path.join(app.getPath('userData'), 'offline-cache'));
   installAudioPermissionPolicy(session.defaultSession, TRUSTED_APP_ORIGIN);
+  installDisplayMediaHandler(session.defaultSession);
   installNetworkLayer(session.defaultSession);
 
   Menu.setApplicationMenu(
